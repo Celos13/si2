@@ -1,4 +1,4 @@
-from typing import Tuple, Sequence, Union
+from typing import Tuple, Sequence, Iterable
 
 import numpy as np
 import pandas as pd
@@ -197,6 +197,88 @@ class Dataset:
         X = np.random.rand(n_samples, n_features)
         y = np.random.randint(0, n_classes, n_samples)
         return cls(X, y, features=features, label=label)
+    
+    def dropna(self) -> "Dataset":
+        """
+        Remove all samples (rows) that contain at least one NaN value
+        in any feature.
+
+        This method updates X (and y if present) in-place and returns
+        the modified Dataset instance.
+
+        Returns
+        -------
+        Dataset
+            The Dataset instance without any rows containing NaN values.
+        """
+        mask = ~np.any(np.isnan(self.X), axis=1)
+        self.X = self.X[mask]
+        if self.y is not None:
+            self.y = self.y[mask]
+        return self
+
+    def fillna(self, value: float | str = "mean") -> "Dataset":
+        """
+        Replace NaN values in X with a given value or with the column mean.
+
+        Parameters
+        ----------
+        value : float or {"mean"}, default="mean"
+            If a float, all NaN entries are replaced by this value.
+            If "mean", NaN entries in each feature are replaced by that
+            feature's mean.
+
+        Returns
+        -------
+        Dataset
+            The Dataset instance with NaN values filled.
+        """
+        X = self.X.astype(float).copy()
+
+        if isinstance(value, (float, int)):
+            fill_vals = np.full(X.shape[1], float(value))
+        elif value == "mean":
+            fill_vals = np.nanmean(X, axis=0)
+        elif value == "median":
+            fill_vals = np.nanmedian(X, axis=0)
+        else:
+            raise ValueError("value must be a float, 'mean' or 'median'")
+
+        inds = np.where(np.isnan(X))
+        X[inds] = np.take(fill_vals, inds[1])
+        self.X = X
+        return self
+
+    def remove_by_index(self, indices: Iterable[int]) -> "Dataset":
+        """
+        Remove the samples at the given indices from X (and y if present).
+
+        Parameters
+        ----------
+        indices : iterable of int
+            Indices of the samples to remove.
+
+        Returns
+        -------
+        Dataset
+            The Dataset instance with the selected samples removed.
+        """
+        import numpy as np
+        n = self.X.shape[0]
+
+        if not (-n <= index < n):
+            raise IndexError("index out of range")
+
+        if index < 0:
+            index = n + index
+
+        mask = np.ones(n, dtype=bool)
+        mask[index] = False
+
+        self.X = self.X[mask]
+        if self.y is not None:
+            self.y = self.y[mask]
+        return self
 
 
 if __name__ == '__main__':
