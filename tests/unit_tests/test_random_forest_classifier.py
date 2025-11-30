@@ -4,7 +4,6 @@ from si.models.random_forest_classifier import RandomForestClassifier
 
 
 def test_random_forest_classifier_simple_separable_data():
-    # dataset fácil: duas classes linearmente separáveis
     rng = np.random.default_rng(42)
     X_class0 = rng.normal(loc=-2.0, scale=0.5, size=(50, 2))
     X_class1 = rng.normal(loc=2.0, scale=0.5, size=(50, 2))
@@ -26,5 +25,4 @@ def test_random_forest_classifier_simple_separable_data():
     model.fit(ds)
     score = model.score(ds)
 
-    # em dados tão simples, esperamos uma accuracy bastante alta
     assert score > 0.9

@@ -6,9 +6,9 @@ def test_tanimoto_similarity_basic():
     x = np.array([1, 0, 1, 0], dtype=int)
 
     y = np.array([
-        [1, 0, 1, 0],  # igual a x -> sim = 1
-        [1, 1, 0, 0],  # interseção=1, |x|=2, |y|=2 -> 1/(2+2-1)=1/3
-        [0, 0, 0, 0],  # ambos zeros -> definimos sim = 1
+        [1, 0, 1, 0],  
+        [1, 1, 0, 0],  
+        [0, 0, 0, 0],  
     ], dtype=int)
 
     sims = tanimoto_similarity(x, y)
@@ -21,7 +21,7 @@ def test_tanimoto_similarity_basic():
 
 def test_tanimoto_raises_on_shape_mismatch():
     x = np.array([1, 0, 1], dtype=int)
-    y = np.array([[1, 0, 1, 0]], dtype=int)  # nº de colunas diferente
+    y = np.array([[1, 0, 1, 0]], dtype=int)  
 
     try:
         tanimoto_similarity(x, y)
@@ -36,5 +36,4 @@ def test_tanimoto_both_zero_vectors():
 
     sims = tanimoto_similarity(x, y)
 
-    # aqui sim, ambos zeros -> queremos 1.0
     assert np.isclose(sims[0], 1.0)

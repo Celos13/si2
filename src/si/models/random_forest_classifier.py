@@ -67,52 +67,38 @@ class RandomForestClassifier(Model):
         RandomForestClassifier
             The fitted model.
         """
-        if dataset.y is None:
-            raise ValueError("RandomForestClassifier requer um dataset com y (labels).")
-
-        X = dataset.X
-        y = dataset.y
-        n_samples, n_features = X.shape
-
         rng = np.random.default_rng(self.seed)
+        X, y = dataset.X, dataset.y
+        n_samples, n_features = X.shape
         max_features = self.max_features or n_features
 
         self.trees = []
 
         for _ in range(self.n_estimators):
-            sample_indices = rng.integers(low=0, high=n_samples, size=n_samples)
+            boot_idx = rng.integers(0, n_samples, size=n_samples)
+            X_boot = X[boot_idx]
+            y_boot = y[boot_idx]
 
-            feature_indices = rng.choice(
-                n_features,
-                size=max_features,
-                replace=False
-            )
-
-            X_boot = X[sample_indices][:, feature_indices]
-            y_boot = y[sample_indices]
-
-            features_names = (
-                None
-                if dataset.features is None
-                else [dataset.features[i] for i in feature_indices]
-            )
+            feat_idx = rng.choice(n_features, size=max_features, replace=False)
+            X_boot_sub = X_boot[:, feat_idx]
 
             boot_dataset = Dataset(
-                X=X_boot,
+                X=X_boot_sub,
                 y=y_boot,
-                features=features_names,
-                label=dataset.label,
+                features=[dataset.features[i] for i in feat_idx],
+                label=dataset.label
             )
+
+            tree_max_depth = self.max_depth if self.max_depth is not None else 1000
 
             tree = DecisionTreeClassifier(
                 min_sample_split=self.min_sample_split,
-                max_depth=self.max_depth,
-                mode=self.mode,
-                seed=self.seed,
+                max_depth=tree_max_depth,
+                mode=self.mode
             )
             tree.fit(boot_dataset)
 
-            self.trees.append((feature_indices, tree))
+            self.trees.append((feat_idx, tree))
 
         return self
 
@@ -130,33 +116,27 @@ class RandomForestClassifier(Model):
         ndarray of shape (n_samples,)
             Predicted class labels.
         """
-        if not self.trees:
-            raise RuntimeError("RandomForestClassifier não está treinado. Chama fit() primeiro.")
-
         X = dataset.X
         n_samples = X.shape[0]
-        n_trees = len(self.trees)
 
-        all_preds = np.empty((n_samples, n_trees), dtype=object)
+        all_preds = np.zeros((self.n_estimators, n_samples), dtype=object)
 
-        for j, (feature_indices, tree) in enumerate(self.trees):
-            X_sub = X[:, feature_indices]
-            tmp_dataset = Dataset(
+        for i, (feat_idx, tree) in enumerate(self.trees):
+            X_sub = X[:, feat_idx]
+            ds_sub = Dataset(
                 X=X_sub,
                 y=None,
-                features=None,
-                label=dataset.label,
+                features=[dataset.features[j] for j in feat_idx],
+                label=dataset.label
             )
-            preds = tree.predict(tmp_dataset)
-            all_preds[:, j] = preds
+            all_preds[i] = tree.predict(ds_sub)
 
         y_pred = []
-        for i in range(n_samples):
-            values, counts = np.unique(all_preds[i, :], return_counts=True)
-            majority_class = values[np.argmax(counts)]
-            y_pred.append(majority_class)
+        for j in range(n_samples):
+            values, counts = np.unique(all_preds[:, j], return_counts=True)
+            y_pred.append(values[np.argmax(counts)])
 
-        return np.array(y_pred)
+        return np.array(y_pred, dtype=dataset.y.dtype)
 
     
     def _score(self, dataset: Dataset, predictions=None) -> float:
@@ -177,5 +157,4 @@ class RandomForestClassifier(Model):
         if predictions is None:
             predictions = self.predict(dataset)
         return accuracy(dataset.y, predictions)
-
 
