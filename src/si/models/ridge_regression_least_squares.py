@@ -6,35 +6,48 @@ from si.metrics.mse import mse
 
 class RidgeRegressionLeastSquares(Model):
     """
-    Ridge Regression model using the closed-form least-squares solution.
+    Ridge Regression using the analytical (closed-form) least-squares solution.
 
-    Optionally standardizes features before fitting.
+    This model computes:
+        θ = (Xᵀ X + λI)⁻¹ Xᵀ y
+
+    Features can optionally be standardized before fitting. The bias term is NOT
+    regularized, matching standard Ridge Regression conventions.
+
+    Parameters
+    ----------
+    l2_penalty : float, default=1.0
+        Strength of the L2 regularization term λ. Larger values shrink the
+        coefficients more.
+    scale : bool, default=True
+        If True, standardize the features to zero mean and unit variance before
+        fitting. Standardization usually improves numerical stability.
     """
+
     def __init__(self, l2_penalty: float = 1.0, scale: bool = True):
-        """
-        Parameters
-        ----------
-        l2_penalty : float, default=1.0
-            L2 regularization strength (lambda).
-        scale : bool, default=True
-            If True, standardize features before fitting.
-        """
         super().__init__()
         self.l2_penalty = l2_penalty
         self.scale = scale
-        self.theta_zero: float | None = None
-        self.theta: np.ndarray | None = None
-        self.mean: np.ndarray | None = None
-        self.std: np.ndarray | None = None
 
-    def fit(self, dataset: Dataset) -> "RidgeRegressionLeastSquares":
+        # learned parameters
+        self.theta: np.ndarray | None = None
+        self.theta_zero: float | None = None
+        self.mean_: np.ndarray | None = None
+        self.std_: np.ndarray | None = None
+
+    def _fit(self, dataset: Dataset) -> "RidgeRegressionLeastSquares":
         """
         Fit the Ridge Regression model using the analytical solution.
+
+        Steps:
+        1. Standardize X if scale=True.
+        2. Add a bias column (column of ones).
+        3. Compute the regularized normal equation.
 
         Parameters
         ----------
         dataset : Dataset
-            Training dataset with X and y.
+            Training dataset containing X (features) and y (targets).
 
         Returns
         -------
@@ -42,68 +55,81 @@ class RidgeRegressionLeastSquares(Model):
             The fitted model.
         """
         X = dataset.X.copy()
-        y = dataset.y.copy()
+        y = dataset.y
 
+        # 1. Standardize features (optional)
         if self.scale:
-            self.mean = np.mean(X, axis=0)
-            self.std = np.std(X, axis=0, ddof=0)
-            self.std[self.std == 0] = 1
-            X = (X - self.mean) / self.std
+            self.mean_ = np.mean(X, axis=0)
+            self.std_ = np.std(X, axis=0)
+            self.std_[self.std_ == 0] = 1  # prevent division by zero
+            X = (X - self.mean_) / self.std_
         else:
-            self.mean = np.zeros(X.shape[1])
-            self.std = np.ones(X.shape[1])
+            # identity transformation
+            self.mean_ = np.zeros(X.shape[1])
+            self.std_ = np.ones(X.shape[1])
 
-        X_bias = np.c_[np.ones(X.shape[0]), X]
+        # 2. Add bias term
+        X_b = np.hstack([np.ones((X.shape[0], 1)), X])
 
-        n_features = X_bias.shape[1]
+        # 3. Regularization matrix (do NOT penalize the bias parameter)
+        n_features = X_b.shape[1]
         I = np.eye(n_features)
-        I[0, 0] = 0 
+        I[0, 0] = 0  # bias not penalized
 
-        A = X_bias.T.dot(X_bias) + self.l2_penalty * I
-        b = X_bias.T.dot(y)
-        theta_full = np.linalg.inv(A).dot(b)
+        # closed-form ridge regression solution
+        A = X_b.T @ X_b + self.l2_penalty * I
+        b = X_b.T @ y
+        params = np.linalg.solve(A, b)
 
-        self.theta_zero = theta_full[0]
-        self.theta = theta_full[1:]
+        # store parameters
+        self.theta_zero = float(params[0])
+        self.theta = params[1:]
 
         return self
 
-    def predict(self, dataset: Dataset) -> np.ndarray:
+    def _predict(self, dataset: Dataset) -> np.ndarray:
         """
         Predict target values for the given dataset.
+
+        Prediction:
+            y = θ₀ + X θ
 
         Parameters
         ----------
         dataset : Dataset
+            Dataset containing the feature matrix X.
 
         Returns
         -------
         ndarray of shape (n_samples,)
-            Predicted target values.
+            Predicted continuous target values.
         """
         X = dataset.X.copy()
-        X = (X - self.mean) / self.std
 
-        X_bias = np.c_[np.ones(X.shape[0]), X]
+        # apply the same scaling used in fit
+        if self.scale:
+            X = (X - self.mean_) / self.std_
 
-        theta_full = np.r_[self.theta_zero, self.theta]
-        return X_bias.dot(theta_full)
+        return self.theta_zero + X @ self.theta
 
-    def _score(self, dataset: Dataset, predictions=None) -> float:
+    def _score(self, dataset: Dataset, predictions: np.ndarray | None = None) -> float:
         """
-        Compute the MSE on the given dataset.
+        Compute the Mean Squared Error (MSE) on the given dataset.
 
         Parameters
         ----------
         dataset : Dataset
+            Dataset containing ground-truth values.
         predictions : ndarray or None, default=None
-            Optional precomputed predictions.
+            Precomputed predictions. If None, predictions are computed.
 
         Returns
         -------
         float
             MSE value.
         """
-        y_pred = self.predict(dataset)
-        return mse(dataset.y, y_pred)
+        if predictions is None:
+            predictions = self.predict(dataset)
+        return mse(dataset.y, predictions)
+
 

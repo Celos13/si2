@@ -249,36 +249,35 @@ class Dataset:
         self.X = X
         return self
 
-    def remove_by_index(self, indices: Iterable[int]) -> "Dataset":
+    def remove_by_index(self, indices: list[int]) -> "Dataset":
         """
-        Remove the samples at the given indices from X (and y if present).
+        Remove rows at the given indices from the dataset.
 
         Parameters
         ----------
-        indices : iterable of int
-            Indices of the samples to remove.
+        indices : list[int]
+            Indices of the rows to remove.
 
         Returns
         -------
         Dataset
-            The Dataset instance with the selected samples removed.
+            The dataset with the selected rows removed.
         """
-        import numpy as np
-        n = self.X.shape[0]
+        indices = np.array(indices)
 
-        if not (-n <= index < n):
-            raise IndexError("index out of range")
 
-        if index < 0:
-            index = n + index
+        if np.any(indices < 0) or np.any(indices >= self.X.shape[0]):
+            raise IndexError("One or more indices are out of range.")
 
-        mask = np.ones(n, dtype=bool)
-        mask[index] = False
+        mask = np.ones(self.X.shape[0], dtype=bool)
+        mask[indices] = False
 
         self.X = self.X[mask]
         if self.y is not None:
             self.y = self.y[mask]
+
         return self
+
 
 
 if __name__ == '__main__':

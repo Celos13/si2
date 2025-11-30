@@ -55,19 +55,18 @@ class PCA(Transformer):
 
         return self
 
-    def _fit(self, dataset: Dataset) -> "PCA":
+    def _transform(self, dataset: Dataset) -> Dataset:
         """
-        Fit the PCA model to the dataset.
+        Project the dataset onto the learned principal components.
 
         Parameters
         ----------
         dataset : Dataset
-            Input dataset.
 
         Returns
         -------
-        PCA
-            The fitted PCA transformer.
+        Dataset
+            Dataset with transformed features (PC1, PC2, ...).
         """
         if self.mean_ is None or self.components_ is None:
             raise RuntimeError("PCA must be fitted before calling transform().")
