@@ -17,10 +17,13 @@ def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     float
         The RMSE value.
     """
+    # Converter inputs para arrays NumPy de floats
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
 
+    # Verificar que têm o mesmo shape
     if y_true.shape != y_pred.shape:
         raise ValueError(f"Different shapes: {y_true.shape} vs {y_pred.shape}")
 
+    # Calcular RMSE: sqrt(mean((y_true - y_pred)^2))
     return np.sqrt(np.mean((y_true - y_pred) ** 2))

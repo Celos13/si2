@@ -1,102 +1,59 @@
-import itertools
-from typing import Callable, Tuple, Dict, Any
+from unittest import TestCase  # Base para classes de teste
+
+from datasets import DATASETS_PATH  # Caminho base para datasets do projeto
+
+import os  # Usado para construir paths de ficheiros
+
+from si.io.data_file import read_data_file           # Função para ler ficheiros CSV em Dataset
+from si.metrics.accuracy import accuracy             # Métrica accuracy (nem é usada diretamente aqui)
+from si.model_selection.grid_search_cv import grid_search_cv  # Função a testar
+from si.models.logistic_regression import LogisticRegression  # Modelo base para o grid search
 
 import numpy as np
 
-from si.data.dataset import Dataset
-from si.model_selection.cross_validate import k_fold_cross_validation
 
+class TestGridSearchCV(TestCase):
+    # Classe de testes para a função grid_search_cv
 
-def grid_search_cv(model,
-                   dataset: Dataset,
-                   hyperparameter_grid: Dict[str, Tuple],
-                   scoring: Callable = None,
-                   cv: int = 5) -> Dict[str, Any]:
-    """
-    Performs a grid search cross validation on a model.
+    def setUp(self):
+        # Método chamado antes de cada teste, prepara os dados
 
-    Parameters
-    ----------
-    model
-        The model to cross validate.
-    dataset: Dataset
-        The dataset to cross validate on.
-    hyperparameter_grid: Dict[str, Tuple]
-        The hyperparameter grid to use.
-    scoring: Callable
-        The scoring function to use.
-    cv: int
-        The cross validation folds.
+        # Caminho para o ficheiro CSV breast-bin.csv
+        self.csv_file = os.path.join(DATASETS_PATH, 'breast_bin', 'breast-bin.csv')
 
-    Returns
-    -------
-    results: Dict[str, Any]
-        The results of the grid search cross validation. Includes the scores, hyperparameters,
-        best hyperparameters and best score.
-    """
-    # validate the parameter grid
-    for parameter in hyperparameter_grid:
-        if not hasattr(model, parameter):
-            raise AttributeError(f"Model {model} does not have parameter {parameter}.")
+        # Lê o CSV para um Dataset (label=True, última coluna é a label)
+        self.dataset = read_data_file(filename=self.csv_file, label=True, sep=",")
 
-    results = {'scores': [], 'hyperparameters': []}
+    def test_grid_search_k_fold_cross_validation(self):
 
-    # for each combination
-    for combination in itertools.product(*hyperparameter_grid.values()):
+        # Modelo base: regressão logística
+        model = LogisticRegression()
 
-        # parameter configuration
-        parameters = {}
+        # Grelha de hiperparâmetros para explorar
+        parameter_grid_ = {
+            'l2_penalty': (1, 10),        # duas opções para λ
+            'alpha': (0.001, 0.0001),     # duas opções para alpha (step do gradiente)
+            'max_iter': (1000, 2000)      # duas opções para max_iter
+        }
+        # Total de combinações = 2 * 2 * 2 = 8
 
-        # set the parameters
-        for parameter, value in zip(hyperparameter_grid.keys(), combination):
-            setattr(model, parameter, value)
-            parameters[parameter] = value
+        # Faz grid search com k-fold cross-validation (cv=3)
+        results_ = grid_search_cv(
+            model,
+            self.dataset,
+            hyperparameter_grid=parameter_grid_,
+            cv=3
+        )
 
-        # cross validate the model
-        score = k_fold_cross_validation(model=model, dataset=dataset, scoring=scoring, cv=cv)
+        # Verifica que há 8 scores (um por combinação de hiperparâmetros)
+        self.assertEqual(len(results_["scores"]), 8)
 
-        # add the score
-        results['scores'].append(np.mean(score))
+        # Extrai o dicionário de melhores hiperparâmetros
+        best_hyperparameters = results_['best_hyperparameters']
+        # Deve ter 3 chaves: l2_penalty, alpha, max_iter
+        self.assertEqual(len(best_hyperparameters), 3)
 
-        # add the hyperparameters
-        results['hyperparameters'].append(parameters)
-
-    results['best_hyperparameters'] = results['hyperparameters'][np.argmax(results['scores'])]
-    results['best_score'] = np.max(results['scores'])
-    return results
-
-
-if __name__ == '__main__':
-    # import dataset
-    from si.data.dataset import Dataset
-    from si.models.logistic_regression import LogisticRegression
-
-    # load and split the dataset
-    dataset_ = Dataset.from_random(600, 100, 2)
-
-    # initialize the Logistic Regression model
-    knn = LogisticRegression()
-
-    # parameter grid
-    parameter_grid_ = {
-        'l2_penalty': (1, 10),
-        'alpha': (0.001, 0.0001),
-        'max_iter': (1000, 2000)
-    }
-
-    # cross validate the model
-    results_ = grid_search_cv(knn,
-                              dataset_,
-                              hyperparameter_grid=parameter_grid_,
-                              cv=3)
-
-    # print the results
-    print(results_)
-
-    # get the best hyperparameters
-    best_hyperparameters = results_['best_hyperparameters']
-    print(f"Best hyperparameters: {best_hyperparameters}")
-
-    # get the best score
-    best_score = results_['best_score']
-    print(f"Best score: {best_score}")
+        # Extrai o melhor score médio
+        best_score = results_['best_score']
+        # Verifica que o melhor score (arredondado a 2 casas) é 0.97
+        self.assertEqual(np.round(best_score, 2), 0.97)
