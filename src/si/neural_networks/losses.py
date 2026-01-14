@@ -131,3 +131,47 @@ class BinaryCrossEntropy(LossFunction):
         # Avoid division by zero
         p = np.clip(y_pred, 1e-15, 1 - 1e-15)
         return - (y_true / p) + (1 - y_true) / (1 - p)
+
+class CategoricalCrossEntropy(LossFunction):
+    """
+    Categorical Cross-Entropy loss for multi-class classification
+    with one-hot encoded targets.
+
+    y_true: one-hot (n_samples, n_classes)
+    y_pred: probabilities (n_samples, n_classes)
+    """
+
+    def loss(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """
+        Compute categorical cross-entropy:
+            L = -mean( sum(y_true * log(y_pred)) )
+
+        Uses np.clip to avoid log(0).
+        """
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+
+        eps = 1e-15
+        y_pred_clipped = np.clip(y_pred, eps, 1.0 - eps)
+
+        # soma por classe -> (n_samples,)
+        per_sample = -np.sum(y_true * np.log(y_pred_clipped), axis=1)
+
+        # média pelos samples
+        return float(np.mean(per_sample))
+
+    def derivative(self, y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
+        """
+        Derivative w.r.t. y_pred (not logits):
+            dL/dy_pred = -(y_true / y_pred) / n_samples
+
+        Uses np.clip to avoid division by 0.
+        """
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+
+        eps = 1e-15
+        y_pred_clipped = np.clip(y_pred, eps, 1.0 - eps)
+
+        n = y_true.shape[0]
+        return -(y_true / y_pred_clipped) / n

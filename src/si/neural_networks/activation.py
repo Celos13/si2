@@ -177,3 +177,66 @@ class ReLUActivation(ActivationLayer):
             The derivative of the activation function.
         """
         return np.where(input >= 0, 1, 0)
+
+class TanhActivation(Layer):
+    """
+    Hyperbolic tangent activation.
+    Squashes values into [-1, 1].
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.input = None
+        self.output = None
+
+    def forward_propagation(self, input: np.ndarray, training: bool = True) -> np.ndarray:
+        self.input = input
+        self.output = np.tanh(input)
+        return self.output
+
+    def backward_propagation(self, error: np.ndarray) -> np.ndarray:
+        # d/dx tanh(x) = 1 - tanh(x)^2
+        return error * (1.0 - self.output ** 2)
+
+    def output_shape(self) -> tuple:
+        return self._input_shape
+
+    def parameters(self) -> int:
+        return 0
+
+
+class SoftmaxActivation(Layer):
+    """
+    Softmax activation (stable version).
+    Produces a probability distribution per sample (rows sum to 1).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.input = None
+        self.output = None
+
+    def forward_propagation(self, input: np.ndarray, training: bool = True) -> np.ndarray:
+        self.input = input
+
+        # stable softmax: subtract max per row
+        x = input - np.max(input, axis=1, keepdims=True)
+
+        exp_x = np.exp(x)
+        self.output = exp_x / np.sum(exp_x, axis=1, keepdims=True)
+        return self.output
+
+    def backward_propagation(self, error: np.ndarray) -> np.ndarray:
+        """
+        Jacobian-vector product for softmax:
+        dL/dx = y * (error - sum(error*y))
+        """
+        y = self.output
+        dot = np.sum(error * y, axis=1, keepdims=True)
+        return y * (error - dot)
+
+    def output_shape(self) -> tuple:
+        return self._input_shape
+
+    def parameters(self) -> int:
+        return 0

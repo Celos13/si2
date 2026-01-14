@@ -141,3 +141,100 @@ class DenseLayer(Layer):
             The shape of the output of the layer.
         """
         return (self.n_units,) 
+
+class Dropout(Layer):
+    """
+    Dropout layer (regularization).
+
+    During training:
+      - randomly sets some activations to 0 with probability `probability`
+      - scales the remaining activations by 1/(1 - probability)
+
+    During inference:
+      - returns input unchanged
+    """
+
+    def __init__(self, probability: float):
+        """
+        Parameters
+        ----------
+        probability : float
+            Probability of dropping a unit (0 <= p < 1).
+        """
+        super().__init__()
+        if not (0.0 <= probability < 1.0):
+            raise ValueError("probability must be in [0, 1).")
+
+        self.probability = probability
+        self.mask = None
+        self.input = None
+        self.output = None
+
+    def forward_propagation(self, input: np.ndarray, training: bool = True) -> np.ndarray:
+        """
+        Forward pass.
+
+        Parameters
+        ----------
+        input : np.ndarray
+            Input activations.
+        training : bool, default=True
+            If True, apply dropout. If False, do nothing.
+
+        Returns
+        -------
+        np.ndarray
+            Output after applying dropout (training) or unchanged input (inference).
+        """
+        self.input = input
+
+        # Inference mode (or p = 0): do nothing
+        if not training or self.probability == 0.0:
+            self.mask = None
+            self.output = input
+            return self.output
+
+        # Training mode: create dropout mask and scale outputs
+        keep_prob = 1.0 - self.probability
+        scale = 1.0 / keep_prob
+
+        self.mask = np.random.binomial(1, keep_prob, size=input.shape)
+        self.output = input * self.mask * scale
+        return self.output
+
+    def backward_propagation(self, error: np.ndarray) -> np.ndarray:
+        """
+        Backward pass.
+
+        Parameters
+        ----------
+        error : np.ndarray
+            Output error from next layer.
+
+        Returns
+        -------
+        np.ndarray
+            Input error to propagate to previous layer.
+        """
+        # If no dropout mask (inference), pass error through unchanged
+        if self.mask is None:
+            return error
+
+        # During training, only propagate gradients through kept units
+        return error * self.mask
+
+    def output_shape(self) -> tuple:
+        """
+        Dropout does not change the shape.
+        """
+        # Prefer using stored input shape if available (like DenseLayer uses)
+        if hasattr(self, "_input_shape"):
+            return self._input_shape
+        # fallback if input was already seen
+        return self.input.shape[1:] if self.input is not None else None
+
+    def parameters(self) -> int:
+        """
+        Dropout has no learnable parameters.
+        """
+        return 0

@@ -1,4 +1,5 @@
 import numpy as np
+
 from si.base.model import Model
 from si.data.dataset import Dataset
 from si.metrics.accuracy import accuracy
@@ -6,76 +7,94 @@ from si.metrics.accuracy import accuracy
 
 class StackingClassifier(Model):
     """
-    Stacking Classifier Ensemble:
-    - models: lista de modelos base
-    - final_model: modelo final treinado sobre as previsões dos modelos base
+    Stacking classifier (ensemble).
+
+    Trains a set of base models, uses their predictions as meta-features,
+    and then trains a final model on those meta-features.
     """
 
-    def __init__(self, models, final_model):
+    def __init__(self, models: list[Model], final_model: Model):
+        """
+        Parameters
+        ----------
+        models : list[Model]
+            Base models used to generate meta-features.
+        final_model : Model
+            Model trained on meta-features to produce final predictions.
+        """
         super().__init__()
         self.models = models
         self.final_model = final_model
 
-        # parâmetros estimados
-        self.trained_models = None
-
     def _fit(self, dataset: Dataset):
         """
-        1. Treinar os modelos base
-        2. Obter previsões dos modelos base → novo dataset
-        3. Treinar o modelo final com essas previsões
+        Algorithm (from slides):
+        1) Train the initial set of models
+        2) Get predictions from the initial set of models
+        3) Train the final model with the predictions of the initial set of models
+        4) Return self
         """
-        X = dataset.X
-        y = dataset.y
-        n_samples = X.shape[0]
+        # 1) train base models
+        for m in self.models:
+            m.fit(dataset)
 
-        # 1) treinar modelos base
-        self.trained_models = []
-        base_predictions = []
+        # 2) build meta-features from base predictions
+        meta_X = self._base_predictions_as_features(dataset)
 
-        for model in self.models:
-            model.fit(dataset)
-            self.trained_models.append(model)
-
-            # previsões deste modelo base
-            preds = model.predict(dataset)
-            base_predictions.append(preds)
-
-        # 2) empilhar previsões (colunas)
-        base_pred_matrix = np.column_stack(base_predictions)
-
-        # criar dataset para treinar o final_model
-        meta_dataset = Dataset(
-            X=base_pred_matrix,
-            y=y,
-            features=[f"model_{i}_pred" for i in range(len(self.models))]
+        # 3) train final model on meta-features
+        meta_ds = Dataset(
+            X=meta_X,
+            y=dataset.y,
+            features=[f"m{i}" for i in range(meta_X.shape[1])],
+            label=dataset.label
         )
-
-        # 3) treinar modelo final
-        self.final_model.fit(meta_dataset)
+        self.final_model.fit(meta_ds)
 
         return self
 
-    def _predict(self, dataset: Dataset):
+    def _predict(self, dataset: Dataset) -> np.ndarray:
         """
-        1. Obter previsões dos modelos base
-        2. Criar dataset meta e prever com final_model
+        Algorithm (from slides):
+        1) Get predictions from the initial set of models
+        2) Get final predictions using the final model and the predictions as input
         """
-        base_predictions = []
+        meta_X = self._base_predictions_as_features(dataset)
 
-        for model in self.trained_models:
-            preds = model.predict(dataset)
-            base_predictions.append(preds)
+        meta_ds = Dataset(
+            X=meta_X,
+            y=None,
+            features=[f"m{i}" for i in range(meta_X.shape[1])],
+            label=None
+        )
+        return self.final_model.predict(meta_ds)
 
-        meta_X = np.column_stack(base_predictions)
-        meta_dataset = Dataset(X=meta_X, y=None)
-
-        return self.final_model.predict(meta_dataset)
-
-    def _score(self, dataset: Dataset, predictions=None):
+    def _score(self, dataset: Dataset, predictions=None) -> float:
         """
-        Accuracy dos valores reais vs preditos.
+        From slides:
+        1) Get predictions using predict
+        2) Compute accuracy between predicted and real labels
         """
         if predictions is None:
             predictions = self.predict(dataset)
-        return accuracy(dataset.y, predictions)
+        return float(accuracy(dataset.y, predictions))
+
+    def _base_predictions_as_features(self, dataset: Dataset) -> np.ndarray:
+        """
+        Helper: collect predictions from each base model and stack them
+        as columns -> meta-feature matrix shape (n_samples, n_models).
+        """
+        preds = []
+        for m in self.models:
+            p = m.predict(dataset)
+
+            # garantir formato (n_samples,)
+            p = np.asarray(p).reshape(-1)
+
+            # transformar classes (possivelmente strings) em números se necessário
+            # (muitos datasets aqui usam 0/1, por isso normalmente já está ok)
+            preds.append(p)
+
+        # empilhar colunas: (n_models, n_samples) -> (n_samples, n_models)
+        meta_X = np.vstack(preds).T.astype(float)
+        return meta_X
+
